@@ -2,6 +2,7 @@ package com.dssrkh.app.ui.chat
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,8 +18,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -82,6 +86,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -101,6 +106,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -146,6 +152,9 @@ fun ChatScreen(
     val state = vm.state
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
+    }
     val characterId = state.character?.id ?: 0L
     val sessions by remember(characterId) {
         app.database.sessionDao().observeByCharacter(characterId)
@@ -208,6 +217,15 @@ fun ChatScreen(
         }
     }
 
+    val bgPath = state.character?.bgOverride
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    LaunchedEffect(imeBottom, state.messages.size) {
+        if (imeBottom > 0 && state.messages.isNotEmpty()) {
+            listState.scrollToItem(state.messages.lastIndex, scrollOffset = 100_000)
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -244,11 +262,35 @@ fun ChatScreen(
             )
         },
     ) {
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (!bgPath.isNullOrBlank()) {
+                AsyncImage(
+                    model = File(bgPath),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(6.dp),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.78f)),
+                )
+            }
+            Scaffold(
+                containerColor = if (bgPath.isNullOrBlank()) {
+                    MaterialTheme.colorScheme.background
+                } else {
+                    Color.Transparent
+                },
+                snackbarHost = { SnackbarHost(snackbarHostState) },
+                topBar = {
+                    CenterAlignedTopAppBar(
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = Color.Transparent,
+                        ),
+                        title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = state.character?.name ?: "对话",
@@ -332,22 +374,6 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            val bgPath = state.character?.bgOverride
-            if (!bgPath.isNullOrBlank()) {
-                AsyncImage(
-                    model = File(bgPath),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .blur(8.dp),
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background.copy(alpha = 0.90f)),
-                )
-            }
             if (state.loading) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center))
             } else if (state.messages.isEmpty()) {
@@ -473,6 +499,7 @@ fun ChatScreen(
                 }
             },
         )
+    }
     }
     }
 }
@@ -1117,8 +1144,7 @@ private fun InputBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .imePadding()
+            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         if (uploading) {
@@ -1126,7 +1152,7 @@ private fun InputBar(
         }
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
             shadowElevation = 8.dp,
             modifier = Modifier.fillMaxWidth(),
         ) {
